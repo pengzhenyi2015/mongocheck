@@ -12,13 +12,34 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-func main() {
-	src := flag.String("src", "mongodb://testUser:testPwd@localhost:27017/admin?authSource=admin", "源集群地址, 必填")
+// 工具的参数
+var (
+	src = flag.String("src", "mongodb://testUser:testPwd@localhost:27017/admin?authSource=admin", "源集群地址, 必填")
 	// dst := flag.String("dst", "mongodb://testUser:testPwd@localhost:27018/admin?authSource=admin", "源集群地址, 必填")
-	db := flag.String("db", "testdb", "要检查的数据库名, 必填")
+	db = flag.String("db", "testdb", "要检查的数据库名, 必填")
 	// count := flag.Int("count", 100, "每个表要抽样检查的数据条数")
 	// percent := flag.Int("percent", 10, "每个表要抽样检查的数据百分比,如果同时指定了count,则取两者的最小值")
+)
 
+func CheckCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
+	// 先对比文档数
+	srcCount, err := srcColl.EstimatedDocumentCount(context.Background())
+	if err != nil {
+		log.Fatalf("获取源集合 %s 文档数失败: %v", srcColl.Name(), err)
+	}
+
+	dstCount, err := dstColl.EstimatedDocumentCount(context.Background())
+	if err != nil {
+		log.Fatalf("获取目标集合 %s 文档数失败: %v", dstColl.Name(), err)
+	}
+
+	log.Println("源集群文档数", srcCount, "目标集群文档数", dstCount)
+
+	// 抽样数据对比,
+	// 这里不使用 $sample 抽样, 因为数据量大的时候会走 top-k 排序，资源消耗大
+}
+
+func main() {
 	flag.Parse()
 
 	// 连接超时时间
