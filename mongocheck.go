@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"log"
@@ -40,9 +41,62 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 	// 确定一个随机起始点，然后确定好平均步长后抽样数据
 	sampleSize := int64(math.Min(float64(*count), float64(srcCount)*float64(*percent)/100))
 	stepSize := srcCount / sampleSize
-	startIndex := int64(rand.Float64() * float64(srcCount%sampleSize))
+	currentIndex := int64(rand.Float64() * float64(srcCount%sampleSize))
 	log.Printf("开始比对集合:%s, 源集群文档数:%d, 目标集群文档数:%d, 抽样数据条数:%d, 随机起始位置:%d, 步长:%d",
-		srcColl.Name(), srcCount, dstCount, sampleSize, startIndex, stepSize)
+		srcColl.Name(), srcCount, dstCount, sampleSize, currentIndex, stepSize)
+
+	// 先比对第一条数据
+	timeout := time.Minute
+	findOptions := options.FindOneOptions{
+		MaxTime: &timeout,
+		Sort:    bson.D{{Key: "_id", Value: 1}},
+		Skip:    &currentIndex,
+	}
+	srcDoc, err := srcColl.FindOne(context.Background(), bson.M{}, &findOptions).Raw()
+	if err != nil {
+		log.Fatalf("获取源集合 %s 第 %d 条数据失败: %v", srcColl.Name(), currentIndex, err)
+	}
+	id := srcDoc.Lookup("_id")
+
+	dstDoc, err := dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
+	if err != nil {
+		log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
+	}
+	if !bytes.Equal(srcDoc, dstDoc) {
+		log.Fatalf("源集合 %s 数据不一致, _id:%v", srcColl.Name(), id.String())
+	}
+
+	// 比对后续数据
+	success := int64(1)
+	progres := int64(0)
+	findOptions.Skip = &stepSize
+	for i := int64(1); i < sampleSize; i++ {
+		srcDoc, err = srcColl.FindOne(context.Background(), bson.M{"_id": bson.M{"$gte": id}}).Raw()
+		if err != nil {
+			if err == mongo.ErrNoDocuments {
+				log.Printf("get out, id:%v, stepSize:%d, sampleSize:%d, i:%d", id.String(), stepSize, sampleSize, i)
+				break
+			}
+			log.Fatalf("获取源集合 %s 第%d条数据失败: %v", srcColl.Name(), currentIndex+stepSize*i, err)
+		}
+
+		id = srcDoc.Lookup("_id")
+		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
+		if err != nil {
+			log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
+		}
+		if !bytes.Equal(srcDoc, dstDoc) {
+			log.Fatalf("源集合 %s 数据不一致, _id:%v", srcColl.Name(), id.String())
+		}
+
+		success++
+		if (success * 100 / sampleSize) > progres {
+			progres = success * 100 / sampleSize
+			log.Printf("集合 %s 抽样数据 %d 条, 进度: %d%%", srcColl.Name(), success, progres)
+		}
+		// log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
+	}
+	log.Printf("集合 %s 抽样数据 %d 条, 检查完成", srcColl.Name(), success)
 }
 
 func hasDatabase(client *mongo.Client, dbName string) bool {
@@ -81,7 +135,9 @@ func main() {
 		log.Fatalln("请输入合法的参数， src/dst/db 参数不能为空")
 	}
 
-	// 连接超时时间
+	/*
+	 * 连接集群
+	 */
 	timeout := 10 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -106,7 +162,9 @@ func main() {
 		}
 	}()
 
-	// 检查 db 是否存在
+	/*
+	 * 检查 db 是否存在
+	 */
 	if !hasDatabase(srcClient, *db) {
 		log.Fatalf("源集群数据库 %s 不存在", *db)
 	}
@@ -117,6 +175,9 @@ func main() {
 	srcDB := srcClient.Database(*db)
 	dstDB := dstClient.Database(*db)
 
+	/*
+	 * 指定集合进行校验
+	 */
 	if *coll != "" {
 		if !hasCollection(srcDB, *coll) {
 			log.Fatalf("源集群集合 %s 不存在", *coll)
@@ -128,6 +189,9 @@ func main() {
 		return
 	}
 
+	/*
+	 * 对整个库进行校验
+	 */
 	srcColls, err := srcDB.ListCollectionNames(ctx, bson.M{})
 	if err != nil {
 		log.Fatalf("源集群获取集合列表失败: %v", err)
