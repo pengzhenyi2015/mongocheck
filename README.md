@@ -25,10 +25,10 @@ Usage of ./mongocheck:
 # 示例
 ## 1. 校验整个db
 ```
-./mongocheck -src=mongodb://testuser:testpwd@localhost:27017/admin?authSource=admin -dst=mongodb://testuser:testpwd@localhost:27018/admin?authSource=admin  -db=db1 -count=9999 -percent=10
+./mongocheck -src='mongodb://testuser:testpwd@localhost:27017/admin?authSource=admin&readPreference=secondaryPreferred' -dst='mongodb://testuser:testpwd@localhost:27018/admin?authSource=admin&readPreference=secondaryPreferred'  -db=db1 -count=9999 -percent=10
 ```
 
 ## 2. 检验单个collection
 ```
-./mongocheck -src=mongodb://testuser:testpwd@localhost:27017/admin?authSource=admin -dst=mongodb://testuser:testpwd@localhost:27018/admin?authSource=admin  -db=db1  -coll=coll2 -count=9999 -percent=10
+./mongocheck -src='mongodb://testuser:testpwd@localhost:27017/admin?authSource=admin&readPreference=secondaryPreferred' -dst='mongodb://testuser:testpwd@localhost:27018/admin?authSource=admin&readPreference=secondaryPreferred'  -db=db1  -coll=coll2 -count=9999 -percent=10
 ```
