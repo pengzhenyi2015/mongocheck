@@ -90,14 +90,16 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 			break
 		}
 
-		log.Printf("aaa: %v", cur.Current.String())
-
 		id = cur.Current.Lookup("_id")
 		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
 		if err != nil {
 			log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
 		}
 		if !bytes.Equal(cur.Current, dstDoc) {
+			if len(cur.Current) < 200 && len(dstDoc) < 200 {
+				log.Printf("源集合 %s 数据不一致, _id:%v\n源集群数据:%s\n目标集群数据:%s",
+					srcColl.Name(), id.String(), cur.Current.String(), dstDoc.String())
+			}
 			log.Fatalf("源集合 %s 数据不一致, _id:%v", srcColl.Name(), id.String())
 		}
 
@@ -108,7 +110,7 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 			progres = success * 100 / sampleSize
 			log.Printf("集合 %s 抽样数据 %d 条, 进度: %d%%", srcColl.Name(), success, progres)
 		}
-		log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
+		// log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
 	}
 	log.Printf("集合 %s 抽样数据 %d 条, 检查完成", srcColl.Name(), success)
 }
