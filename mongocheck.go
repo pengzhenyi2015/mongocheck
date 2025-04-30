@@ -218,4 +218,5 @@ func main() {
 		}
 		checkCollection(srcDB.Collection(collName), dstDB.Collection(collName))
 	}
+	log.Println("所有集合检查完成")
 }
