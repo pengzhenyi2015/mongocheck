@@ -47,12 +47,12 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 
 	// 先比对第一条数据
 	timeout := time.Minute
-	findOptions := options.FindOneOptions{
+	findOneOptions := options.FindOneOptions{
 		MaxTime: &timeout,
 		Sort:    bson.D{{Key: "_id", Value: 1}},
 		Skip:    &currentIndex,
 	}
-	srcDoc, err := srcColl.FindOne(context.Background(), bson.M{}, &findOptions).Raw()
+	srcDoc, err := srcColl.FindOne(context.Background(), bson.M{}, &findOneOptions).Raw()
 	if err != nil {
 		log.Fatalf("获取源集合 %s 第 %d 条数据失败: %v", srcColl.Name(), currentIndex, err)
 	}
@@ -69,9 +69,15 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 	// 比对后续数据
 	success := int64(1)
 	progres := int64(0)
-	findOptions.Skip = &stepSize
+	limit := int64(1)
+	findOptions := options.FindOptions{
+		MaxTime: &timeout,
+		Sort:    bson.D{{Key: "_id", Value: 1}},
+		Skip:    &stepSize,
+		Limit:   &limit,
+	}
 	for i := int64(1); i < sampleSize; i++ {
-		srcDoc, err = srcColl.FindOne(context.Background(), bson.M{"_id": bson.M{"$gte": id}}).Raw()
+		cur, err := srcColl.Find(context.Background(), bson.M{"_id": bson.M{"$gte": id}}, &findOptions)
 		if err != nil {
 			if err == mongo.ErrNoDocuments {
 				log.Printf("get out, id:%v, stepSize:%d, sampleSize:%d, i:%d", id.String(), stepSize, sampleSize, i)
@@ -79,22 +85,30 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 			}
 			log.Fatalf("获取源集合 %s 第%d条数据失败: %v", srcColl.Name(), currentIndex+stepSize*i, err)
 		}
+		if !cur.Next(context.Background()) {
+			// 源集合没有数据了
+			break
+		}
 
-		id = srcDoc.Lookup("_id")
+		log.Printf("aaa: %v", cur.Current.String())
+
+		id = cur.Current.Lookup("_id")
 		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
 		if err != nil {
 			log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
 		}
-		if !bytes.Equal(srcDoc, dstDoc) {
+		if !bytes.Equal(cur.Current, dstDoc) {
 			log.Fatalf("源集合 %s 数据不一致, _id:%v", srcColl.Name(), id.String())
 		}
+
+		cur.Close(context.Background())
 
 		success++
 		if (success * 100 / sampleSize) > progres {
 			progres = success * 100 / sampleSize
 			log.Printf("集合 %s 抽样数据 %d 条, 进度: %d%%", srcColl.Name(), success, progres)
 		}
-		// log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
+		log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
 	}
 	log.Printf("集合 %s 抽样数据 %d 条, 检查完成", srcColl.Name(), success)
 }
