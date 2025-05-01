@@ -86,6 +86,7 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 			log.Fatalf("获取源集合 %s 第%d条数据失败: %v", srcColl.Name(), currentIndex+stepSize*i, err)
 		}
 		if !cur.Next(context.Background()) {
+			log.Printf("源集合 %s 没有可抽样数据,提前退出, id:%v, stepSize:%d, sampleSize:%d, i:%d", srcColl.Name(), id.String(), stepSize, sampleSize, i)
 			// 源集合没有数据了
 			break
 		}
