@@ -52,13 +52,13 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 		Sort:    bson.D{{Key: "_id", Value: 1}},
 		Skip:    &currentIndex,
 	}
-	srcDoc, err := srcColl.FindOne(context.Background(), bson.M{}, &findOneOptions).Raw()
+	srcDoc, err := srcColl.FindOne(context.Background(), bson.M{}, &findOneOptions).DecodeBytes()
 	if err != nil {
 		log.Fatalf("获取源集合 %s 第 %d 条数据失败: %v", srcColl.Name(), currentIndex, err)
 	}
 	id := srcDoc.Lookup("_id")
 
-	dstDoc, err := dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
+	dstDoc, err := dstColl.FindOne(context.Background(), bson.M{"_id": id}).DecodeBytes()
 	if err != nil {
 		log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
 	}
@@ -91,7 +91,7 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 		}
 
 		id = cur.Current.Lookup("_id")
-		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
+		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).DecodeBytes()
 		if err != nil {
 			log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
 		}
