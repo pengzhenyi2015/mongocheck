@@ -113,7 +113,7 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 		}
 		// log.Printf("_id:%v, 源集合 %s 第%d条数据一致", id.String(), srcColl.Name(), currentIndex+stepSize*i)
 	}
-	log.Printf("集合 %s 抽样数据 %d 条, 检查完成", srcColl.Name(), success)
+	log.Printf("集合 %s 抽样数据成功 %d 条, 检查完成", srcColl.Name(), success)
 }
 
 func hasDatabase(client *mongo.Client, dbName string) bool {
