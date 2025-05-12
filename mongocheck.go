@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"sort"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -16,13 +17,53 @@ import (
 
 // 工具的参数
 var (
-	src     = flag.String("src", "mongodb://testUser:testPwd@localhost:27017/admin?authSource=admin", "源集群地址, 必填")
-	dst     = flag.String("dst", "mongodb://testUser:testPwd@localhost:27018/admin?authSource=admin", "源集群地址, 必填")
-	db      = flag.String("db", "", "要检查的数据库名, 必填")
-	coll    = flag.String("coll", "", "要检查的集合名, 可选, 如果不指定则检查所有集合")
-	count   = flag.Int("count", 100, "每个表要抽样检查的数据条数")
-	percent = flag.Int("percent", 10, "每个表要抽样检查的数据百分比,如果同时指定了count,则取两者的最小值")
+	src              = flag.String("src", "mongodb://testUser:testPwd@localhost:27017/admin?authSource=admin", "源集群地址, 必填")
+	dst              = flag.String("dst", "mongodb://testUser:testPwd@localhost:27018/admin?authSource=admin", "源集群地址, 必填")
+	db               = flag.String("db", "", "要检查的数据库名, 必填")
+	coll             = flag.String("coll", "", "要检查的集合名, 可选, 如果不指定则检查所有集合")
+	count            = flag.Int("count", 100, "每个表要抽样检查的数据条数")
+	percent          = flag.Int("percent", 10, "每个表要抽样检查的数据百分比,如果同时指定了count,则取两者的最小值")
+	checkIndex       = flag.Bool("checkIndex", false, "是否比对索引")
+	continueNotExist = flag.Bool("continueNotExist", false, "目标集群有数据不存在时,是否报错继续检查。一般目标集群一直处于增量同步的情况下考虑使用")
 )
+
+func checkIndexes(srcColl *mongo.Collection, dstColl *mongo.Collection) {
+	srcIndexesCursor, err := srcColl.Indexes().List(context.Background())
+	if err != nil {
+		log.Fatalf("获取源集合 %s 索引失败: %v", srcColl.Name(), err)
+	}
+	dstIndexesCursor, err := dstColl.Indexes().List(context.Background())
+	if err != nil {
+		log.Fatalf("获取目标集合 %s 索引失败: %v", dstColl.Name(), err)
+	}
+
+	srcIndexList := make([]bson.Raw, 0)
+	for srcIndexesCursor.Next(context.Background()) {
+		srcIndexList = append(srcIndexList, srcIndexesCursor.Current)
+	}
+	dstIndexList := make([]bson.Raw, 0)
+	for dstIndexesCursor.Next(context.Background()) {
+		dstIndexList = append(dstIndexList, dstIndexesCursor.Current)
+	}
+	sort.Slice(srcIndexList, func(i, j int) bool {
+		return bytes.Compare(srcIndexList[i], srcIndexList[j]) < 0
+	})
+	sort.Slice(dstIndexList, func(i, j int) bool {
+		return bytes.Compare(dstIndexList[i], dstIndexList[j]) < 0
+	})
+
+	if len(srcIndexList) != len(dstIndexList) {
+		log.Fatalf("源集合 %s 和目标集合 %s 索引数量不一致, 源:%d, 目标:%d", srcColl.Name(), dstColl.Name(), len(srcIndexList), len(dstIndexList))
+	}
+
+	for i := range srcIndexList {
+		if !bytes.Equal(srcIndexList[i], dstIndexList[i]) {
+			log.Fatalf("源集合 %s 和目标集合 %s 索引不一致, 源:%v, 目标:%v", srcColl.Name(), dstColl.Name(), srcIndexList[i].String(), dstIndexList[i].String())
+		}
+	}
+
+	log.Printf("源集合 %s 和目标集合 %s 索引一致", srcColl.Name(), dstColl.Name())
+}
 
 func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 	// 先对比文档数
@@ -93,6 +134,11 @@ func checkCollection(srcColl *mongo.Collection, dstColl *mongo.Collection) {
 		id = cur.Current.Lookup("_id")
 		dstDoc, err = dstColl.FindOne(context.Background(), bson.M{"_id": id}).Raw()
 		if err != nil {
+			if err == mongo.ErrNoDocuments && *continueNotExist {
+				log.Printf("目标集合 %s 没有对应的数据, _id:%v", dstColl.Name(), id.String())
+				cur.Close(context.Background())
+				continue
+			}
 			log.Fatalf("获取目标集合 %s 对应的数据失败, _id:%v, err: %v", srcColl.Name(), id.String(), err)
 		}
 		if !bytes.Equal(cur.Current, dstDoc) {
@@ -201,7 +247,12 @@ func main() {
 		if !hasCollection(dstDB, *coll) {
 			log.Fatalf("目标集群集合 %s 不存在", *coll)
 		}
-		checkCollection(srcDB.Collection(*coll), dstDB.Collection(*coll))
+		srcColl := srcDB.Collection(*coll)
+		dstColl := dstDB.Collection(*coll)
+		if *checkIndex {
+			checkIndexes(srcColl, dstColl)
+		}
+		checkCollection(srcColl, dstColl)
 		return
 	}
 
@@ -216,7 +267,12 @@ func main() {
 		if !hasCollection(dstDB, collName) {
 			log.Fatalf("目标集群集合 %s 不存在", collName)
 		}
-		checkCollection(srcDB.Collection(collName), dstDB.Collection(collName))
+		srcColl := srcDB.Collection(collName)
+		dstColl := dstDB.Collection(collName)
+		if *checkIndex {
+			checkIndexes(srcColl, dstColl)
+		}
+		checkCollection(srcColl, dstColl)
 	}
 	log.Println("所有集合检查完成")
 }
