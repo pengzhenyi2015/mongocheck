@@ -63,6 +63,10 @@ Usage of ./mongocheck:
 
 在分片集群场景下，存在一定的请求放大。     
 
+<p>
+  <img src="https://github.com/user-attachments/assets/142329ba-a3be-4ae5-be29-0db077313285" width=350>
+</p>
+
 ### SampleRate/rand 算法
 优点1： CollScan 全表扫，性能稳定。       
 缺点1： CollScan 在小数据量时性能差，因为有很多不必要的扫描。     
@@ -80,6 +84,10 @@ Usage of ./mongocheck:
 |skip	            |2	|21	|69	|131	|236	|570	|995	|1257|    
 |sample		|1     |10	|36	|69	|99	|222	|322	|403|    
 |sampleRate/random	|6	|10	|27	|40	|60	|140	|217	|268|    
+
+<p>
+   <img src="https://github.com/user-attachments/assets/a4c4d825-5bcc-47c9-bf64-40438942c5e7" width=800>
+</p>
 
 ### 分片集群
 硬件环境：2C8G 云主机    
