@@ -101,3 +101,6 @@ Usage of ./mongocheck:
 |sample	      |1	|7	|8	|12	|23	|49	|75	|95|
 |sampleRate/random	|1	|2	|4	|9	|16	|39	|60	|75|
 
+<p>
+  <img src="https://github.com/user-attachments/assets/935f1d39-35cf-4778-9931-bd3cc15e01de" width=800>
+</p>
